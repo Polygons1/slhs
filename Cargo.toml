@@ -4,6 +4,8 @@ version = "0.3.0"
 edition = "2024"
 description = "A simple http server"
 license = "MIT"
+repository = "https://github.com/Polygons1/slhs"
+homepage = "https://github.com/Polygons1/slhs"
 
 [features]
 gzip = ["dep:flate2"]
