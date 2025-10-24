@@ -4,10 +4,10 @@ SLHS is a simple, no-frills HTTP server library written in Rust. It aims to prov
 
 ## Features
 
-*   **Simple Routing**: Define `GET` and `POST` endpoints with ease.
-*   **Basic Request/Response Handling**: Access headers, body, URL parameters, and set response status and headers.
-*   **Optional Compression**: Support for `gzip` and `brotli` compression (requires feature flags).
-*   **Thread Pool**: Uses a simple thread pool for handling concurrent requests.
+- **Simple Routing**: Define `GET` and `POST` endpoints with ease.
+- **Basic Request/Response Handling**: Access headers, body, URL parameters, and set response status and headers.
+- **Optional Compression**: Support for `gzip` and `brotli` compression (requires feature flags).
+- **Thread Pool**: Uses a simple thread pool for handling concurrent requests.
 
 ## Installation
 
@@ -30,18 +30,18 @@ cargo add slhs --features "gzip,brotli"
 This example sets up a server that listens on `127.0.0.1:8080` and responds to a `GET` request at the root path `/` and a `POST` request at `/submit`.
 
 ```rust
-use slhs::{Router, Request, Response};
+use slhs::*;
 
 fn main() {
     let mut router = Router::default();
 
-    router.get("/", |req: Request, mut res: Response<Box<dyn ToString>>| {
+    router.get("/", |req, mut res| {
         println!("Headers: {:?}", req.headers);
         println!("URL Params: {:?}", req.url_params);
         res.end("Hello from SLHS!")
     });
 
-    router.post("/submit", |req: Request, mut res: Response<Box<dyn ToString>>| {
+    router.post("/submit", |req, mut res| {
         println!("Received POST request with body: {:?}", req.body);
         res.status(201); // Created
         res.end(format!("Thanks for the data: {:?}", req.body.unwrap_or_default()))
@@ -62,7 +62,7 @@ use slhs::{Router, Request, Response, headers};
 fn main() {
     let mut router = Router::default();
 
-    router.get("/greet", |req: Request, mut res: Response<Box<dyn ToString>>| {
+    router.get("/greet", |req, mut res| {
         let name = req.url_params.get("name").map(|s| s.as_str()).unwrap_or("Guest");
 
         res.headers(headers!{
@@ -87,12 +87,12 @@ use slhs::{Router, Request, Response};
 fn main() {
     let mut router = Router::default();
 
-    router.get("/forbidden", |_: Request, mut res: Response<Box<dyn ToString>>| {
+    router.get("/forbidden", |_, mut res| {
         res.status(403); // Forbidden
         res.end("You don't have permission to view this page.")
     });
 
-    router.get("/teapot", |_: Request, mut res: Response<Box<dyn ToString>>| {
+    router.get("/teapot", |_, mut res| {
         // This will be compressed if the client supports it and `brotli` or `gzip` features are enabled.
         res.status(418); // I'm a teapot
         res.end("I'm a little teapot, short and stout...")
