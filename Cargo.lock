@@ -24,12 +24,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "amutex"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d43adffa3b2df9dce533d136c137b2aeefa78c2236386b55a96ae9d9aee4fe"
-
-[[package]]
 name = "brotli"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -99,9 +93,8 @@ checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
 
 [[package]]
 name = "slhs"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
- "amutex",
  "brotli",
  "flate2",
  "midsync",

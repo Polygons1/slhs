@@ -1,6 +1,6 @@
 [package]
 name = "slhs"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2024"
 description = "A simple http server"
 license = "MIT"
@@ -12,7 +12,6 @@ gzip = ["dep:flate2"]
 brotli = ["dep:brotli"]
 
 [dependencies]
-amutex = "0.1.0"
 midsync = "0.1.0"
 brotli = { version = "3.3.4", optional = true }
 flate2 = { version = "1.0.28", optional = true }
