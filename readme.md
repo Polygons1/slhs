@@ -57,7 +57,7 @@ fn main() {
 This example demonstrates how to access URL query parameters and set custom response headers using the `headers!` macro.
 
 ```rust
-use slhs::{Router, Request, Response, headers};
+use slhs::*;
 
 fn main() {
     let mut router = Router::default();
@@ -82,7 +82,7 @@ fn main() {
 SLHS automatically handles `404 Not Found` and `405 Method Not Allowed`. You can explicitly set other statuses. If compression features are enabled and the client supports it via `Accept-Encoding` header, the response body will be compressed.
 
 ```rust
-use slhs::{Router, Request, Response};
+use slhs::*;
 
 fn main() {
     let mut router = Router::default();
