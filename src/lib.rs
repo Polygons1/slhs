@@ -5,7 +5,7 @@ use std::{
     io::{self, Read, Write},
     marker::PhantomData,
     net::{TcpListener, TcpStream, ToSocketAddrs},
-    str::FromStr,
+    str::{Bytes, FromStr},
     sync::mpsc::{self, Sender},
     thread::{self, JoinHandle},
 };
@@ -158,21 +158,20 @@ impl Display for CompressionMethod {
     }
 }
 
-pub struct Response<B> {
+pub struct Response {
     headers: HashMap<&'static str, String>,
     status: Option<i32>,
     __allowed_compressions: Option<Vec<CompressionMethod>>,
-    _body: PhantomData<B>,
 }
 
-impl Response<Box<dyn ToString>> {
+impl Response {
     pub fn status(&mut self, status: i32) {
         self.status = Some(status)
     }
     pub fn headers(&mut self, headers: HashMap<&'static str, String>) {
         self.headers = headers;
     }
-    pub fn end<B: ToString + 'static>(self, body: B) -> (String, Vec<u8>) {
+    pub fn end<B: AsRef<[u8]> + 'static>(self, body: B) -> (String, Vec<u8>) {
         let s = self.status.unwrap_or(200);
         let (data, method) = self.compress(Box::new(body));
         build_response(
@@ -207,7 +206,7 @@ impl Response<Box<dyn ToString>> {
             method,
         )
     }
-    fn compress(&self, body: Box<dyn ToString>) -> (Vec<u8>, Option<CompressionMethod>) {
+    fn compress(&self, mut body: Box<dyn AsRef<[u8]>>) -> (Vec<u8>, Option<CompressionMethod>) {
         let server_methods = self.__allowed_compressions.clone();
         let mut allowed_methods: Vec<CompressionMethod> = vec![
             #[cfg(feature = "gzip")]
@@ -220,38 +219,44 @@ impl Response<Box<dyn ToString>> {
         match server_methods {
             Some(methods) => {
                 if allowed_methods.is_empty() {
-                    (body.to_string().as_bytes().to_vec(), None)
+                    (body.as_mut().as_ref().to_vec(), None)
                 } else {
                     for method in allowed_methods {
                         if methods.contains(&method) {
                             return (self.compress_with(body, method.clone()), Some(method));
                         }
                     }
-                    (body.to_string().as_bytes().to_vec(), None)
+                    (body.as_mut().as_ref().to_vec(), None)
                 }
             }
-            None => (body.to_string().as_bytes().to_vec(), None),
+            None => (body.as_mut().as_ref().to_vec(), None),
         }
     }
     #[cfg(feature = "gzip")]
-    fn compress_with_gzip(&self, body: Box<dyn ToString>, _method: CompressionMethod) -> Vec<u8> {
+    fn compress_with_gzip(
+        &self,
+        mut body: Box<dyn AsRef<[u8]>>,
+        _method: CompressionMethod,
+    ) -> Vec<u8> {
         use std::io::BufReader;
 
         let enc = flate2::write::GzEncoder::new(RW::new(Vec::new()), flate2::Compression::best());
         let mut writer = BufReader::new(enc);
-        let mut body = body.to_string();
-        writer
-            .read_exact(unsafe { body.as_bytes_mut() })
-            .unwrap_or(());
+        let mut body = body.as_mut().as_ref().to_vec();
+        writer.read_exact(body.as_mut_slice()).unwrap_or(());
         let enc = writer.into_inner();
         match enc.finish() {
             Ok(v) if !v.is_empty() => v.clone(),
-            _ => body.as_bytes().to_vec(),
+            _ => body.to_vec(),
         }
     }
     #[cfg(feature = "brotli")]
-    fn compress_with_brotli(&self, body: Box<dyn ToString>, _method: CompressionMethod) -> Vec<u8> {
-        let body_bytes = body.to_string().into_bytes();
+    fn compress_with_brotli(
+        &self,
+        mut body: Box<dyn AsRef<[u8]>>,
+        _method: CompressionMethod,
+    ) -> Vec<u8> {
+        let body_bytes = body.as_mut().as_ref().to_vec();
         let mut compressed = Vec::with_capacity(body_bytes.len());
         match brotli::BrotliCompress(
             &mut RW::new(body_bytes.clone()),
@@ -263,7 +268,7 @@ impl Response<Box<dyn ToString>> {
         }
     }
     #[cfg(any(feature = "gzip", feature = "brotli"))]
-    fn compress_with(&self, body: Box<dyn ToString>, method: CompressionMethod) -> Vec<u8> {
+    fn compress_with(&self, body: Box<dyn AsRef<[u8]>>, method: CompressionMethod) -> Vec<u8> {
         match method {
             #[cfg(feature = "gzip")]
             CompressionMethod::Gzip => self.compress_with_gzip(body, method),
@@ -274,7 +279,7 @@ impl Response<Box<dyn ToString>> {
         }
     }
     #[cfg(all(not(feature = "gzip"), not(feature = "brotli")))]
-    fn compress_with(&self, _body: Box<dyn ToString>, _method: CompressionMethod) -> Vec<u8> {
+    fn compress_with(&self, _body: Box<dyn AsRef<[u8]>>, _method: CompressionMethod) -> Vec<u8> {
         unreachable!()
     }
 
@@ -283,7 +288,6 @@ impl Response<Box<dyn ToString>> {
             headers: HashMap::new(),
             status: None,
             __allowed_compressions: methods,
-            _body: PhantomData,
         }
     }
 }
@@ -415,12 +419,7 @@ fn parse_url_params(input: &str) -> Option<HashMap<String, String>> {
 }
 
 async fn http<
-    H: Fn(
-        &str,
-        String,
-        Request,
-        Response<Box<dyn ToString>>,
-    ) -> Result<(String, Vec<u8>), HandlerNotFound>,
+    H: Fn(&str, String, Request, Response) -> Result<(String, Vec<u8>), HandlerNotFound>,
 >(
     mut stream: TcpStream,
     invoke_handler: H,
@@ -485,7 +484,7 @@ async fn http<
     Ok(())
 }
 
-type ReqFn<B> = dyn Fn(Request, Response<B>) -> (String, Vec<u8>);
+type ReqFn = dyn Fn(Request, Response) -> (String, Vec<u8>);
 
 pub struct Request<'lt> {
     pub headers: HashMap<&'lt str, &'lt str>,
@@ -507,7 +506,7 @@ impl<'lt> Request<'lt> {
     }
 }
 
-type MethodMap = HashMap<&'static str, Box<ReqFn<Box<dyn ToString>>>>;
+type MethodMap = HashMap<&'static str, Box<ReqFn>>;
 
 #[derive(Default)]
 pub struct Router {
@@ -515,10 +514,7 @@ pub struct Router {
 }
 
 impl Router {
-    pub fn get<
-        P: ToString,
-        H: Fn(Request, Response<Box<dyn ToString>>) -> (String, Vec<u8>) + 'static,
-    >(
+    pub fn get<P: ToString, H: Fn(Request, Response) -> (String, Vec<u8>) + 'static>(
         &mut self,
         path: P,
         h: H,
@@ -530,10 +526,7 @@ impl Router {
             .or_insert(Box::new(h));
         self
     }
-    pub fn post<
-        P: ToString,
-        H: Fn(Request, Response<Box<dyn ToString>>) -> (String, Vec<u8>) + 'static,
-    >(
+    pub fn post<P: ToString, H: Fn(Request, Response) -> (String, Vec<u8>) + 'static>(
         &mut self,
         path: P,
         h: H,
@@ -561,7 +554,7 @@ impl Router {
         m: &str,
         p: String,
         req: Request,
-        res: Response<Box<dyn ToString>>,
+        res: Response,
     ) -> Result<(String, Vec<u8>), HandlerNotFound> {
         Ok((self
             .routes
