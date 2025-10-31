@@ -3,9 +3,8 @@ use std::{
     collections::HashMap,
     fmt::{self, Display},
     io::{self, Read, Write},
-    marker::PhantomData,
     net::{TcpListener, TcpStream, ToSocketAddrs},
-    str::{Bytes, FromStr},
+    str::FromStr,
     sync::mpsc::{self, Sender},
     thread::{self, JoinHandle},
 };
